@@ -14,8 +14,10 @@ function startIssTracker(io) {
         throw new Error(`Status ${res.status}`);
       }
       const data = await res.json();
-      const { latitude, longitude } = data.iss_position || {};
-      if (latitude && longitude) {
+      const { latitude: lat, longitude: lon } = data.iss_position || {};
+      const latitude = parseFloat(lat);
+      const longitude = parseFloat(lon);
+      if (!Number.isNaN(latitude) && !Number.isNaN(longitude)) {
         io.emit('iss-position', { latitude, longitude });
       }
     } catch (err) {
