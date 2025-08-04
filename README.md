@@ -1,10 +1,3 @@
 # Astral Oddities
 
-A starter project demonstrating best-practice project structure.
-
-## Features
-
-- Organized source code under `src/`
-- Tests using `pytest`
-- Documentation in `docs/`
-
+A starter project designed to test the autonomous programming capabilities of OpenAI Codex. My goal is to create it with as little human input as possible in order to get a sense of what the agent is capable of figuring out on its own and what the human developer has to manage.
