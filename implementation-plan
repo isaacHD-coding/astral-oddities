@@ -1,0 +1,125 @@
+# Space Events Dashboard Implementation Plan
+
+## 1. Overview
+Goal: Build a real-time dashboard that aggregates interesting space events including ISS position, asteroid approaches, space weather, and launch schedules. The system provides user-configurable notifications and a daily digest.
+
+## 2. High-Level Architecture
+- **Frontend (React)**
+  - Responsive dashboard with widgets for ISS, asteroid approaches, space weather, and launch schedules.
+  - Interactive map to show ISS location and overhead pass predictions.
+  - Countdown timers for upcoming events.
+  - Notification center for alerts and daily digest.
+  - WebSocket connection for live updates.
+- **Backend (Node/Express or FastAPI)**
+  - REST API serving aggregated space data.
+  - WebSocket server pushing real-time ISS tracking and event alerts.
+  - Scheduled jobs to pull data from external APIs and cache responses.
+  - Persistence layer for user preferences and notification history.
+  - Authentication (optional for MVP).
+
+## 3. External APIs & Data Sources
+| Feature | API | Endpoints | Update Frequency | Notes |
+| --- | --- | --- | --- | --- |
+| ISS Position | Open Notify ISS API | `/iss-now.json` | ~5s for realtime, 1min for cache | Provides lat/long of ISS. |
+| Asteroids | NASA NeoWs API | `/feed` or `/neo/rest/v1/feed` | 1-2 hours | Requires NASA API key. |
+| Space Weather | NASA Space Weather API | e.g. `/DONKI/alerts`, `/DONKI/FLR`, `/DONKI/GST` | Hourly | Lists solar flares, geomagnetic storms. |
+| Launch Schedule | SpaceX API | `/v5/launches/upcoming`, `/v5/rockets`, `/v5/launchpads` | Daily or on schedule change | Returns launch details. |
+| APOD | NASA APOD API | `/planetary/apod` | Daily | For dashboard hero image. |
+| Weather | OpenWeather or similar | `/weather`, `/onecall` | 1-2 hours | Determine viewing conditions, cloud cover. |
+| Geolocation | Browser Geolocation API + reverse geocoder (e.g., PositionStack) | Geocode user location | On user request | Needed for ISS passes and local weather. |
+| Time Zone | WorldTimeAPI or Google Time Zone API | `/timezone/{lat,lon}` | On user request | Convert UTC times to local. |
+
+## 4. Backend Components
+- **API Aggregation Service**
+  - Wraps external API calls with rate limit handling and caching.
+  - Normalize data into internal formats.
+  - Store results in Redis or in-memory cache with TTL.
+- **Scheduled Jobs**
+  - Use cron-style scheduler (node-cron or Celery beat) to fetch:
+    - Asteroid data every 2 hours.
+    - Space weather data hourly.
+    - Launch data twice daily.
+    - APOD once daily.
+  - Store results in cache/DB.
+- **Real-Time ISS Tracking**
+  - Poll ISS API every 5 seconds.
+  - Broadcast position via WebSocket to connected clients.
+- **Event Detection Engine**
+  - Monitor cached data to trigger alerts:
+    - Asteroid with miss distance <0.1 AU within next 7 days.
+    - ISS pass over user location (using orbital propagation library like `tle.js` with TLE data).
+    - Geomagnetic storm index >= threshold for aurora.
+  - Queue notifications to users (WebSocket push + stored for digest).
+- **Notification & Digest Service**
+  - Persist user preferences (location, alert thresholds, email/web push tokens) in lightweight DB (SQLite/PostgreSQL).
+  - Daily job compiles digest of events and sends email or in-app summary.
+
+## 5. Frontend Components
+- **Dashboard Layout**
+  - Header with APOD image, date, and quick settings.
+  - Grid of widgets: ISS Tracker, Asteroid Watch, Space Weather, Launch Schedule, Notification Center.
+- **ISS Tracker Widget**
+  - Map (Leaflet/Mapbox) with live ISS marker.
+  - Option to enter location and see next pass times.
+- **Asteroid Watch Widget**
+  - List next three close approaches with name, size, miss distance, and countdown.
+  - Highlight hazardous ones (<0.1 AU).
+- **Space Weather Widget**
+  - Current solar flare activity, geomagnetic storm level (Kp index), aurora likelihood.
+- **Launch Schedule Widget**
+  - Upcoming SpaceX/NASA launches with mission name, rocket, pad, and countdown.
+- **Notification Center**
+  - Shows triggered alerts and allows user to adjust preferences.
+
+## 6. Data Flow
+1. Scheduler fetches and caches data from external APIs.
+2. Event Detection Engine processes cached data to identify notable events.
+3. WebSocket server pushes real-time ISS positions and event alerts to clients.
+4. Frontend dashboard subscribes to WebSocket and refreshes widgets on updates.
+5. User interactions (set location, preferences) sent to backend REST API to persist.
+
+## 7. Caching & Rate Limit Strategy
+- Use Redis for shared cache across instances.
+- Define TTLs per data type (e.g., ISS 5s, asteroids 2h).
+- Implement retry with exponential backoff for failed API calls.
+- Respect API keys and usage policies; centralize keys in server config.
+
+## 8. Time Zone & Coordinate Handling
+- Store all times in UTC internally.
+- Convert to user local time on server or client using timezone API.
+- Use libraries like `spacetime` or `luxon` for conversions.
+- For ISS pass predictions, convert orbital coordinates to latitude/longitude relative to user.
+
+## 9. Persistence Layer
+- Suggested schema:
+  - `users(id, email, location_lat, location_lon, timezone, alert_prefs)`
+  - `notifications(id, user_id, type, data, read, created_at)`
+- For MVP, a single-file SQLite DB or low-footprint Postgres instance.
+
+## 10. Security & Error Handling
+- Sanitize and validate all external API responses.
+- Rate-limit client requests and authenticate user sessions (JWT or session cookies).
+- Log errors and provide graceful fallbacks when APIs are unreachable (show last cached data and timestamp).
+
+## 11. Deployment & DevOps
+- Containerize backend and frontend with Docker.
+- Use environment variables for API keys and config.
+- CI pipeline to run tests and lint checks.
+- Deploy to a PaaS (Heroku, Render) or cloud VM with HTTPS enabled.
+
+## 12. Roadmap
+1. **MVP**
+   - Implement backend aggregation service with ISS, asteroid, space weather, and launch APIs.
+   - Set up React dashboard with basic widgets and WebSocket updates.
+   - Support user location input and notifications for asteroid proximity and ISS overhead.
+2. **Enhancements**
+   - Add email/web push notifications and daily digest.
+   - Integrate weather API for stargazing forecasts.
+   - Add user authentication and profile management.
+   - Expand to show historical data and analytics.
+
+## 13. Open Questions
+- Which notification channels are highest priority (email, push, SMS)?
+- How persistent should cached data be for offline viewing?
+- Do we need multi-language support from the start?
+
